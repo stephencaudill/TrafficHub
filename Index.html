@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Traffic Cam Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.263.1/lucide.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+       
+        .temp-card {
+            background: rgba(17, 24, 39, 0.7);
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 min-h-screen flex flex-col">
+
+    <!-- Header -->
+    <header class="bg-gray-800 border-b border-gray-700 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <i data-lucide="camera" class="h-8 w-8 text-blue-400"></i>
+                <h1 class="text-xl font-bold tracking-tight text-white">Traffic<span class="text-blue-400">Hub</span></h1>
+            </div>
+            <div class="flex items-center space-x-4">
+                <button onclick="manualRefresh()" class="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md transition-colors duration-200 text-sm font-medium shadow-lg shadow-blue-900/50">
+                    <i data-lucide="refresh-cw" class="h-4 w-4" id="refresh-icon"></i>
+                    <span>Refresh Data</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+       
+        <!-- Status Bar & Filter Controls -->
+        <div class="mb-6 flex flex-col md:flex-row items-center justify-between bg-gray-800/50 p-4 rounded-xl border border-gray-700 backdrop-blur-sm gap-4">
+           
+            <div class="flex flex-wrap items-center gap-4">
+                <span class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                <span class="text-sm font-medium text-gray-300">Live Monitoring</span>
+               
+                <div class="text-xs text-gray-500 hidden sm:block">|</div>
+
+                <!-- Filter Dropdown -->
+                <div class="flex items-center space-x-2">
+                    <label for="camera-filter" class="text-sm font-medium text-gray-400 hidden sm:block">Filter:</label>
+                    <select id="camera-filter" onchange="handleFilterChange(this.value)" class="bg-gray-700 border border-gray-600 text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 shadow-md">
+                        <option value="All" selected>All Regions</option>
+                        <option value="Lexington, KY">Lexington, KY</option>
+                        <option value="Northern KY Region">Northern KY</option>
+                    </select>
+                </div>
+
+                <div class="text-xs text-gray-500 hidden sm:block">|</div>
+
+                <!-- Auto-Refresh -->
+                <div class="flex items-center space-x-2">
+                    <label for="refresh-interval" class="text-sm font-medium text-gray-400">Auto-Refresh:</label>
+                    <select id="refresh-interval" onchange="setRefreshInterval(this.value)" class="bg-gray-700 border border-gray-600 text-gray-100 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5 shadow-md">
+                        <option value="0" selected>Off</option>
+                        <option value="30000">30s</option>
+                        <option value="60000">1m</option>
+                        <option value="300000">5m</option>
+                        <option value="900000">15m</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Last Updated -->
+            <div class="text-xs text-gray-500 whitespace-nowrap" id="last-updated">
+                Initializing...
+            </div>
+        </div>
+
+        <!-- Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="cam-grid">
+            <!-- Dynamic Content -->
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-800 border-t border-gray-700 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 py-6 text-center text-xs text-gray-500">
+            <p>TrafficHub © 2024 • Road temps are estimated based on regional ambient data.</p>
+        </div>
+    </footer>
+
+    <script>
+        // --- Data ---
+        const cameras = [
+            { id: 1, name: "Clays Ferry Bridge - I-75 NB @ MP 97.9", region: "Lexington, KY", lat: 37.88, lon: -84.34, url: "https://www.trimarc.org/images/milestone/CCTV_07_75_0979.jpg" },
+            { id: 2, name: "I-75 @ Newtown Pike (NB)", region: "Lexington, KY", lat: 38.09, lon: -84.49, url: "https://www.trimarc.org/images/milestone/CCTV_07_75_1152.jpg" },
+            { id: 3, name: "I-75 @ Ironworks Pike (SB)", region: "Lexington, KY", lat: 38.15, lon: -84.51, url: "https://www.trimarc.org/images/milestone/CCTV_07_75_1199.jpg" },
+            { id: 4, name: "I-71/I-75 at I-275", region: "Northern KY", lat: 39.01, lon: -84.60, url: "https://www.trimarc.org/images/milestone/CCTV_06_75_1847.jpg" },
+            { id: 5, name: "I-471 NB just N of I-275", region: "Northern KY", lat: 39.04, lon: -84.46, url: "https://www.trimarc.org/images/milestone/CCTV_06_471_0006.jpg" },
+            { id: 6, name: "I-471 SB at Highland Ave Overpass", region: "Northern KY", lat: 39.06, lon: -84.47, url: "https://www.trimarc.org/images/milestone/CCTV_06_471_0023.jpg" },
+            { id: 7, name: "I-471 SB just S of Ky Rt 8", region: "Northern KY", lat: 39.09, lon: -84.48, url: "https://www.trimarc.org/images/milestone/CCTV_06_471_0045.jpg" },
+            { id: 8, name: "I-71/I-75 N on Brent Spence Bridge", region: "Covington, KY", lat: 39.10, lon: -84.52, url: "https://www.trimarc.org/images/milestone/CCTV_06_75_1912.jpg" }
+        ];
+
+        let autoRefreshTimer = null;
+        let currentFilter = 'All';
+        const weatherCache = {}; // Cache to avoid redundant API calls during batch refresh
+
+        // --- Functions ---
+
+        async function fetchWeather(lat, lon) {
+            const cacheKey = `${lat.toFixed(1)},${lon.toFixed(1)}`;
+            if (weatherCache[cacheKey]) return weatherCache[cacheKey];
+
+            try {
+                const res = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&temperature_unit=fahrenheit`);
+                const data = await res.json();
+                const ambient = data.current_weather.temperature;
+               
+                // Heuristic for Road Temp: Surface is usually warmer than air in day, colder at night.
+                // Estimating +3F during day-ish hours for this simulation.
+                const hour = new Date().getHours();
+                const offset = (hour > 7 && hour < 19) ? 4.2 : -2.1;
+                const road = ambient + offset;
+
+                const result = { ambient: ambient.toFixed(1), road: road.toFixed(1) };
+                weatherCache[cacheKey] = result;
+                return result;
+            } catch (e) {
+                return { ambient: "--", road: "--" };
+            }
+        }
+
+        async function renderGrid(filterRegion = 'All') {
+            currentFilter = filterRegion;
+            const grid = document.getElementById('cam-grid');
+            grid.innerHTML = '';
+           
+            const filtered = cameras.filter(cam => {
+                if (filterRegion === 'All') return true;
+                if (filterRegion === 'Lexington, KY') return cam.region === 'Lexington, KY';
+                return cam.region === 'Northern KY' || cam.region === 'Covington, KY';
+            });
+
+            for (const cam of filtered) {
+                const card = document.createElement('div');
+                card.className = "bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700 relative group flex flex-col";
+                const ts = new Date().getTime();
+
+                card.innerHTML = `
+                    <div class="relative aspect-video bg-gray-900 overflow-hidden">
+                        <img id="img-${cam.id}" src="${cam.url}?v=${ts}" alt="${cam.name}" referrerpolicy="no-referrer"
+                             class="w-full h-full object-cover relative z-10" onload="handleLoad(${cam.id})" onerror="handleError(${cam.id})">
+                       
+                        <div id="err-${cam.id}" class="hidden absolute inset-0 bg-gray-950 z-20 flex flex-col items-center justify-center text-red-500">
+                            <i data-lucide="wifi-off"></i><span class="text-[10px] mt-2 font-mono">OFFLINE</span>
+                        </div>
+
+                        <!-- Status Badge -->
+                        <div class="absolute top-2 right-2 z-30">
+                            <div id="badge-${cam.id}" class="bg-gray-900/80 backdrop-blur text-yellow-500 text-[10px] px-2 py-0.5 rounded-full border border-gray-700 flex items-center">
+                                <div class="w-1.5 h-1.5 bg-yellow-500 rounded-full mr-1 animate-pulse"></div> LOADING
+                            </div>
+                        </div>
+
+                        <!-- Temperature Overlays -->
+                        <div class="absolute top-2 left-2 z-30 flex flex-col gap-1">
+                            <div class="temp-card border border-white/10 rounded px-2 py-1 flex items-center space-x-2">
+                                <i data-lucide="thermometer" class="w-3 h-3 text-orange-400"></i>
+                                <span class="text-[10px] font-bold text-white"><span id="air-${cam.id}">--</span>°F</span>
+                                <span class="text-[8px] text-gray-400 uppercase tracking-tighter">Air</span>
+                            </div>
+                            <div class="temp-card border border-white/10 rounded px-2 py-1 flex items-center space-x-2">
+                                <i data-lucide="car" class="w-3 h-3 text-blue-400"></i>
+                                <span class="text-[10px] font-bold text-white"><span id="road-${cam.id}">--</span>°F</span>
+                                <span class="text-[8px] text-gray-400 uppercase tracking-tighter">Road</span>
+                            </div>
+                        </div>
+
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 to-transparent p-3 pt-6 z-30">
+                            <p class="text-white font-semibold text-xs truncate">${cam.name}</p>
+                        </div>
+                    </div>
+                `;
+                grid.appendChild(card);
+               
+                // Fetch weather for this specific point
+                fetchWeather(cam.lat, cam.lon).then(w => {
+                    document.getElementById(`air-${cam.id}`).innerText = w.ambient;
+                    document.getElementById(`road-${cam.id}`).innerText = w.road;
+                });
+            }
+            lucide.createIcons();
+        }
+
+        async function manualRefresh(isManual = true) {
+            const icon = document.getElementById('refresh-icon');
+            if (isManual) icon.classList.add('animate-spin');
+           
+            // Clear weather cache for fresh reading
+            for (let key in weatherCache) delete weatherCache[key];
+           
+            await renderGrid(currentFilter);
+            updateTime();
+           
+            if (isManual) setTimeout(() => icon.classList.remove('animate-spin'), 800);
+        }
+
+        function setRefreshInterval(ms) {
+            if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+            const interval = parseInt(ms);
+            if (interval > 0) {
+                autoRefreshTimer = setInterval(() => manualRefresh(false), interval);
+            }
+        }
+
+        function handleFilterChange(val) {
+            renderGrid(val);
+            updateTime();
+        }
+
+        function handleLoad(id) {
+            const b = document.getElementById(`badge-${id}`);
+            if (b) {
+                b.className = "bg-green-900/80 backdrop-blur text-green-400 text-[10px] px-2 py-0.5 rounded-full border border-green-800 flex items-center";
+                b.innerHTML = `<div class="w-1.5 h-1.5 bg-green-400 rounded-full mr-1"></div> LIVE`;
+            }
+        }
+
+        function handleError(id) {
+            document.getElementById(`img-${id}`).style.display = 'none';
+            document.getElementById(`err-${id}`).classList.remove('hidden');
+            const b = document.getElementById(`badge-${id}`);
+            if (b) {
+                b.className = "bg-red-900/80 backdrop-blur text-red-400 text-[10px] px-2 py-0.5 rounded-full border border-red-800 flex items-center";
+                b.innerHTML = `<div class="w-1.5 h-1.5 bg-red-400 rounded-full mr-1"></div> OFFLINE`;
+            }
+            lucide.createIcons();
+        }
+
+        function updateTime() {
+            document.getElementById('last-updated').innerText = `Sync: ${new Date().toLocaleTimeString()}`;
+        }
+
+        // Init
+        window.onload = () => {
+            renderGrid('All');
+            updateTime();
+        };
+    </script>
+</body>
+</html> 
